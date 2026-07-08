@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/coredhcp/coredhcp/handler"
@@ -23,10 +25,12 @@ var TEST_PREFIX = os.Getenv("TEST_PREFIX")
 var UNIX_API_DHCP_LISTENER = TEST_PREFIX + "/state/dhcp/apisock"
 
 type DHCPRequest struct {
-	MAC        string
-	Identifier string
-	Name       string
-	Iface      string
+	MAC          string
+	Identifier   string
+	Name         string
+	Iface        string
+	ParamReqList string
+	VendorClass  string
 }
 
 type DHCPResponse struct {
@@ -118,7 +122,18 @@ func (p *PluginState) Handler4(state *handler.PropagateState, req, resp *dhcpv4.
 		return nil, true
 	}
 
-	dhcp_req := DHCPRequest{req.ClientHWAddr.String(), "", filteredHostName, interfaceName}
+	paramReqList := []string{}
+	for _, code := range req.ParameterRequestList() {
+		paramReqList = append(paramReqList, strconv.Itoa(int(code.Code())))
+	}
+
+	dhcp_req := DHCPRequest{
+		MAC:          req.ClientHWAddr.String(),
+		Name:         filteredHostName,
+		Iface:        interfaceName,
+		ParamReqList: strings.Join(paramReqList, ","),
+		VendorClass:  reg.ReplaceAllString(req.ClassIdentifier(), ""),
+	}
 
 	record, success := requestIP(dhcp_req)
 	if success != nil {
