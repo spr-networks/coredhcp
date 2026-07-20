@@ -2,6 +2,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+//go:build linux
 // +build linux
 
 package server
@@ -16,12 +17,11 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 )
 
-//this function sends an unicast to the hardware address defined in resp.ClientHWAddr,
-//the layer3 destination address is still the broadcast address;
-//iface: the interface where the DHCP message should be sent;
-//resp: DHCPv4 struct, which should be sent;
-func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4) error {
-
+func serializeEthernetResponse(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP net.IP) ([]byte, error) {
+	dstIP = dstIP.To4()
+	if dstIP == nil {
+		return nil, fmt.Errorf("Send Ethernet: invalid IPv4 destination")
+	}
 	eth := layers.Ethernet{
 		EthernetType: layers.EthernetTypeIPv4,
 		SrcMAC:       iface.HardwareAddr,
@@ -31,7 +31,7 @@ func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4) error {
 		Version:  4,
 		TTL:      64,
 		SrcIP:    resp.ServerIPAddr,
-		DstIP:    resp.YourIPAddr,
+		DstIP:    dstIP,
 		Protocol: layers.IPProtocolUDP,
 		Flags:    layers.IPv4DontFragment,
 	}
@@ -42,7 +42,7 @@ func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4) error {
 
 	err := udp.SetNetworkLayerForChecksum(&ip)
 	if err != nil {
-		return fmt.Errorf("Send Ethernet: Couldn't set network layer: %v", err)
+		return nil, fmt.Errorf("Send Ethernet: Couldn't set network layer: %v", err)
 	}
 
 	buf := gopacket.NewSerializeBuffer()
@@ -56,14 +56,20 @@ func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4) error {
 	dhcpLayer := packet.Layer(layers.LayerTypeDHCPv4)
 	dhcp, ok := dhcpLayer.(gopacket.SerializableLayer)
 	if !ok {
-		return fmt.Errorf("Layer %s is not serializable", dhcpLayer.LayerType().String())
+		return nil, fmt.Errorf("Layer %s is not serializable", dhcpLayer.LayerType().String())
 	}
 	err = gopacket.SerializeLayers(buf, opts, &eth, &ip, &udp, dhcp)
 	if err != nil {
-		return fmt.Errorf("Cannot serialize layer: %v", err)
+		return nil, fmt.Errorf("Cannot serialize layer: %v", err)
 	}
-	data := buf.Bytes()
+	return buf.Bytes(), nil
+}
 
+func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP net.IP) error {
+	data, err := serializeEthernetResponse(iface, resp, dstIP)
+	if err != nil {
+		return err
+	}
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, 0)
 	if err != nil {
 		return fmt.Errorf("Send Ethernet: Cannot open socket: %v", err)

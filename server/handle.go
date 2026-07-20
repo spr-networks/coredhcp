@@ -155,12 +155,14 @@ func (l *listener4) HandleMsg4(buf []byte, oob *ipv4.ControlMessage, _peer net.A
 			peer = &net.UDPAddr{IP: req.GatewayIPAddr, Port: dhcpv4.ServerPort}
 		} else if resp.MessageType() == dhcpv4.MessageTypeNak {
 			peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
+			useEthernet = true
 		} else if !req.ClientIPAddr.IsUnspecified() {
 			peer = &net.UDPAddr{IP: req.ClientIPAddr, Port: dhcpv4.ClientPort}
 		} else if req.IsBroadcast() {
 			peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
+			useEthernet = true
 		} else {
-			//sends a layer2 frame so that we can define the destination MAC address
+			// Send at layer 2 because the client does not own yiaddr yet.
 			peer = &net.UDPAddr{IP: resp.YourIPAddr, Port: dhcpv4.ClientPort}
 			useEthernet = true
 		}
@@ -181,12 +183,15 @@ func (l *listener4) HandleMsg4(buf []byte, oob *ipv4.ControlMessage, _peer net.A
 		}
 
 		if useEthernet {
+			if woob == nil {
+				return
+			}
 			intf, err := net.InterfaceByIndex(woob.IfIndex)
 			if err != nil {
 				log.Errorf("MainHandler4: Can not get Interface for index %d %v", woob.IfIndex, err)
 				return
 			}
-			err = sendEthernet(*intf, resp)
+			err = sendEthernet(*intf, resp, peer.IP)
 			if err != nil {
 				log.Errorf("MainHandler4: Cannot send Ethernet packet: %v", err)
 			}
