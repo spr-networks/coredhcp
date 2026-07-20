@@ -12,9 +12,9 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
+	"github.com/coredhcp/coredhcp/handler"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
-	"github.com/coredhcp/coredhcp/handler"
 )
 
 // HandleMsg6 runs for every received DHCPv6 packet. It will run every
@@ -154,13 +154,11 @@ func (l *listener4) HandleMsg4(buf []byte, oob *ipv4.ControlMessage, _peer net.A
 			// TODO: make RFC8357 compliant
 			peer = &net.UDPAddr{IP: req.GatewayIPAddr, Port: dhcpv4.ServerPort}
 		} else if resp.MessageType() == dhcpv4.MessageTypeNak {
-//			peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
-			peer = &net.UDPAddr{IP: resp.YourIPAddr, Port: dhcpv4.ClientPort}
+			peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
 		} else if !req.ClientIPAddr.IsUnspecified() {
 			peer = &net.UDPAddr{IP: req.ClientIPAddr, Port: dhcpv4.ClientPort}
 		} else if req.IsBroadcast() {
-			//peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
-			peer = &net.UDPAddr{IP: resp.YourIPAddr, Port: dhcpv4.ClientPort}
+			peer = &net.UDPAddr{IP: net.IPv4bcast, Port: dhcpv4.ClientPort}
 		} else {
 			//sends a layer2 frame so that we can define the destination MAC address
 			peer = &net.UDPAddr{IP: resp.YourIPAddr, Port: dhcpv4.ClientPort}
