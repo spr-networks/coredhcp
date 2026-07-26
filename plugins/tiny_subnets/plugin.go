@@ -104,17 +104,16 @@ type PluginState struct {
 // Handler4 handles DHCPv4 packets for the range plugin
 func (p *PluginState) Handler4(state *handler.PropagateState, req, resp *dhcpv4.DHCPv4) (*dhcpv4.DHCPv4, bool) {
 
-	reg, err := regexp.Compile("[^A-Za-z0-9.-_]+")
+	hostnameReg, err := regexp.Compile("[^A-Za-z0-9._-]+")
 	if err != nil {
 		log.Fatalf("regexp failed: %v", err)
 	}
-	filteredHostName := reg.ReplaceAllString(req.HostName(), "")
+	filteredHostName := hostnameReg.ReplaceAllString(req.HostName(), "")
 	if filteredHostName == "" {
 		filteredHostName = "DefaultMissingName"
 	}
 
-	interfaceName := string(state.InterfaceName)
-	interfaceName = reg.ReplaceAllString(interfaceName, "")
+	interfaceName := state.InterfaceName
 
 	wanif := os.Getenv("WANIF")
 	if wanif != "" && wanif == interfaceName {
@@ -132,7 +131,7 @@ func (p *PluginState) Handler4(state *handler.PropagateState, req, resp *dhcpv4.
 		Name:         filteredHostName,
 		Iface:        interfaceName,
 		ParamReqList: strings.Join(paramReqList, ","),
-		VendorClass:  reg.ReplaceAllString(req.ClassIdentifier(), ""),
+		VendorClass:  hostnameReg.ReplaceAllString(req.ClassIdentifier(), ""),
 	}
 
 	record, success := requestIP(dhcp_req)
