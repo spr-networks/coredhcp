@@ -17,7 +17,19 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 )
 
-func serializeEthernetResponse(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP net.IP) ([]byte, error) {
+var ethernetBroadcastMAC = net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+
+// clients that set the DHCP broadcast flag may only accept replies with a
+// broadcast destination MAC, while mesh bridges mac-filter broadcast frames.
+// Send to both destinations when replying to the broadcast address.
+func ethernetDestinations(resp *dhcpv4.DHCPv4, dstIP net.IP) []net.HardwareAddr {
+	if dstIP.Equal(net.IPv4bcast) {
+		return []net.HardwareAddr{resp.ClientHWAddr, ethernetBroadcastMAC}
+	}
+	return []net.HardwareAddr{resp.ClientHWAddr}
+}
+
+func serializeEthernetResponse(iface net.Interface, resp *dhcpv4.DHCPv4, dstMAC net.HardwareAddr, dstIP net.IP) ([]byte, error) {
 	dstIP = dstIP.To4()
 	if dstIP == nil {
 		return nil, fmt.Errorf("Send Ethernet: invalid IPv4 destination")
@@ -25,7 +37,7 @@ func serializeEthernetResponse(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP n
 	eth := layers.Ethernet{
 		EthernetType: layers.EthernetTypeIPv4,
 		SrcMAC:       iface.HardwareAddr,
-		DstMAC:       resp.ClientHWAddr,
+		DstMAC:       dstMAC,
 	}
 	ip := layers.IPv4{
 		Version:  4,
@@ -66,9 +78,13 @@ func serializeEthernetResponse(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP n
 }
 
 func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP net.IP) error {
-	data, err := serializeEthernetResponse(iface, resp, dstIP)
-	if err != nil {
-		return err
+	frames := [][]byte{}
+	for _, dstMAC := range ethernetDestinations(resp, dstIP) {
+		data, err := serializeEthernetResponse(iface, resp, dstMAC, dstIP)
+		if err != nil {
+			return err
+		}
+		frames = append(frames, data)
 	}
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, 0)
 	if err != nil {
@@ -94,9 +110,11 @@ func sendEthernet(iface net.Interface, resp *dhcpv4.DHCPv4, dstIP net.IP) error 
 		Halen:    6,
 		Addr:     hwAddr, //not used
 	}
-	err = syscall.Sendto(fd, data, 0, &ethAddr)
-	if err != nil {
-		return fmt.Errorf("Cannot send frame via socket: %v", err)
+	for _, data := range frames {
+		err = syscall.Sendto(fd, data, 0, &ethAddr)
+		if err != nil {
+			return fmt.Errorf("Cannot send frame via socket: %v", err)
+		}
 	}
 	return nil
 }

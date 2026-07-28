@@ -135,7 +135,16 @@ func (l *listener4) HandleMsg4(buf []byte, oob *ipv4.ControlMessage, _peer net.A
 		return
 	}
 
+	if oob == nil || oob.IfIndex == 0 {
+		log.Errorf("MainHandler4: missing interface information for request from %s", req.ClientHWAddr)
+		return
+	}
+
 	intf, err := net.InterfaceByIndex(oob.IfIndex)
+	if err != nil {
+		log.Errorf("MainHandler4: cannot get interface for index %d: %v", oob.IfIndex, err)
+		return
+	}
 
 	state := handler.PropagateState{InterfaceName: intf.Name}
 
