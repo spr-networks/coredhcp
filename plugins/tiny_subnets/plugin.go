@@ -165,6 +165,9 @@ func (p *PluginState) Handler4(state *handler.PropagateState, req, resp *dhcpv4.
 		}
 	}
 
+	if server4 := serverId.To4(); server4 != nil {
+		resp.ServerIPAddr = server4
+	}
 	resp.UpdateOption(dhcpv4.OptServerIdentifier(serverId))
 
 	//set netmask /30 for tinynets.
