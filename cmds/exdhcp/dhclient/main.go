@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/insomniacslk/dhcp/dhcpv4"
-	"github.com/insomniacslk/dhcp/dhcpv4/client4"
+	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/insomniacslk/dhcp/dhcpv6"
 	"github.com/insomniacslk/dhcp/dhcpv6/client6"
 	"github.com/insomniacslk/dhcp/netboot"
@@ -79,14 +80,22 @@ func dhclient4(ifname string, attempts int, verbose bool) (*netboot.BootConf, er
 	if attempts < 1 {
 		attempts = 1
 	}
-	client := client4.NewClient()
-	var (
-		conv []*dhcpv4.DHCPv4
-		err  error
-	)
+	// nclient4 sends from 0.0.0.0 on a packet socket. client4's raw IP
+	// socket leaves the source to the kernel, which takes another
+	// interface's address while ifname has none, and netfilter sees it.
+	client, err := nclient4.New(ifname)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+	var conv []*dhcpv4.DHCPv4
 	for attempt := 0; attempt < attempts; attempt++ {
 		log.Printf("Attempt %d of %d", attempt+1, attempts)
-		conv, err = client.Exchange(ifname)
+		var lease *nclient4.Lease
+		lease, err = client.Request(context.Background())
+		if lease != nil {
+			conv = []*dhcpv4.DHCPv4{lease.Offer, lease.ACK}
+		}
 		if err != nil && attempt < attempts {
 			log.Printf("Error: %v", err)
 			continue
